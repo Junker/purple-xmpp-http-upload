@@ -362,6 +362,11 @@ void jabber_hfu_xfer_send(PurpleConnection *gc, const char *who, const char *fil
 
 static void jabber_hfu_signed_on_cb(PurpleConnection *conn, void *data)
 {
+    PurpleAccount *account = purple_connection_get_account(conn);
+
+    if (strcmp(JABBER_PLUGIN_ID, purple_account_get_protocol_id(account)))
+        return;
+
     JabberStream *js = purple_connection_get_protocol_data(conn);
 
     HFUJabberStreamData *js_data = g_new0(HFUJabberStreamData, 1);
@@ -404,7 +409,7 @@ static PurplePluginInfo info = {
 
     "Implements XEP-0363: HTTP File Upload",
     "This plugin allows to upload a file to HTTP server",
-    "Dmitrii Kosenkov <dk-junker@ya.ru>",
+    "Dmitry Kosenkov <dk-junker@ya.ru>",
     "https://github.com/Junker/purple-xmpp-http-upload",
 
     plugin_load,
