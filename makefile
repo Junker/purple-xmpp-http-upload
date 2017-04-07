@@ -18,6 +18,7 @@ PRPL_LIBNAME	= ${PRPL_NAME}
 
 SKYPEWEB_SOURCES = \
 	src/hfu_disco.c \
+	src/hfu_util.c \
 	src/jabber_http_file_upload.c
 
 

@@ -1,7 +1,6 @@
 #define PURPLE_PLUGINS
 
 #include <glib.h>
-#include <gio/gio.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +21,7 @@
 #include "disco.h"
 
 #include "hfu_disco.h"
+#include "hfu_util.h"
 #include "jabber_http_file_upload.h"
 
 typedef struct {
@@ -46,24 +46,6 @@ static inline void purple_http_url_free(PurpleHttpURL *phl) { g_free(phl->host);
 #define JABBER_PLUGIN_ID "prpl-jabber"
 
 
-static gchar* file_get_mime(const gchar *filename)
-{
-    gboolean is_certain = FALSE;
-
-    char *content_type = g_content_type_guess(filename, NULL, 0, &is_certain);
-
-    if (content_type != NULL)
-    {
-        gchar *mime_type = g_content_type_get_mime_type(content_type);
-
-        g_free(content_type);
-
-        return mime_type;
-    }
-
-    return NULL;
-}
-
 static void jabber_hfu_http_read(gpointer user_data, PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
 {
     gchar buf[1024];
@@ -85,7 +67,7 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
     httpurl = purple_http_url_parse(hfux->put_url);
     path = purple_http_url_get_path(httpurl);
 
-    if (!strcmp(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
+    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
         host = g_hash_table_lookup(hfux->put_headers, "Host") ?: purple_http_url_get_host(httpurl);
     else
         host = purple_http_url_get_host(httpurl);
@@ -146,7 +128,7 @@ static void jabber_hfu_request_cb(JabberStream *js, const char *from,
     put = xmlnode_get_child(slot, "put");
     get = xmlnode_get_child(slot, "get");
 
-    if (!strcmp(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
+    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
     {
         hfux->put_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
         for (header = xmlnode_get_child(put, "header") ; header;
@@ -222,7 +204,7 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
     filesize = g_strdup_printf("%lu", purple_xfer_get_size(xfer));
     filemime = file_get_mime(filepath);
 
-    if (!strcmp(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
+    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
     {
         xmlnode_set_attrib(request_node, "filename", filename);
         xmlnode_set_attrib(request_node, "size", filesize);

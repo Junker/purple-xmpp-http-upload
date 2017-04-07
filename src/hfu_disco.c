@@ -8,6 +8,7 @@
 #include "iq.h"
 
 #include "hfu_disco.h"
+#include "hfu_util.h"
 #include "jabber_http_file_upload.h"
 
 
@@ -36,12 +37,12 @@ static void jabber_hfu_disco_info_cb(JabberStream *js, const char *from,
 			if(!var)
 				continue;
 
-			if(!strcmp(var, NS_HTTP_FILE_UPLOAD))
+			if(str_equal(var, NS_HTTP_FILE_UPLOAD))
 				js_data->ns = NS_HTTP_FILE_UPLOAD;
-			else if(!strcmp(var, NS_HTTP_FILE_UPLOAD_V0))
+			else if(str_equal(var, NS_HTTP_FILE_UPLOAD_V0))
 				js_data->ns = NS_HTTP_FILE_UPLOAD_V0;
 
-			if (!strcmp(var, NS_HTTP_FILE_UPLOAD) || !strcmp(var, NS_HTTP_FILE_UPLOAD_V0))
+			if (str_equal(var, NS_HTTP_FILE_UPLOAD) || str_equal(var, NS_HTTP_FILE_UPLOAD_V0))
 			{
 				js_data->host = g_strdup(from);
 
@@ -52,7 +53,7 @@ static void jabber_hfu_disco_info_cb(JabberStream *js, const char *from,
 					{
 						const char *var = xmlnode_get_attrib(field, "var");
 
-						if(var && !strcmp(var, "max-file-size")) 
+						if(var && str_equal(var, "max-file-size")) 
 						{
 							if((value = xmlnode_get_child(field, "value"))) 
 							{
