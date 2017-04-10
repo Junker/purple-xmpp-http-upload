@@ -24,6 +24,8 @@
 #include "hfu_util.h"
 #include "jabber_http_file_upload.h"
 
+GList *(*old_blist_node_menu)(PurpleBlistNode *node);
+
 typedef struct {
     gchar *host;
     gint port;
@@ -31,6 +33,7 @@ typedef struct {
     gchar *user;
     gchar *passwd;
 } PurpleHttpURL;
+
 
 static inline PurpleHttpURL *purple_http_url_parse(const gchar *url) {
     PurpleHttpURL *ret = g_new0(PurpleHttpURL, 1);
@@ -42,7 +45,7 @@ static inline PurpleHttpURL *purple_http_url_parse(const gchar *url) {
 #define purple_http_url_get_path(httpurl) (httpurl->path)
 static inline void purple_http_url_free(PurpleHttpURL *phl) { g_free(phl->host); g_free(phl->path); g_free(phl->user); g_free(phl->passwd); g_free(phl);  }
 
-
+#define PREF_PREFIX     "/plugins/xmpp-http-upload"
 #define JABBER_PLUGIN_ID "prpl-jabber"
 
 
@@ -293,7 +296,7 @@ static void jabber_hfu_xfer_init(PurpleXfer *xfer)
 
     if (js_data->max_file_size && purple_xfer_get_size(xfer) > js_data->max_file_size)
     {
-        gchar *msg = g_strdup_printf(_("HTTP File Upload maximum file size is %lu byte"), js_data->max_file_size);
+        gchar *msg = g_strdup_printf(_("HTTP File Upload maximum file size is %lu bytes"), js_data->max_file_size);
         purple_notify_error(hfux->js->gc, _("File Send Failed"), _("File Send Failed"), msg);
         g_free(msg);
 
@@ -358,14 +361,53 @@ static void jabber_hfu_signed_on_cb(PurpleConnection *conn, void *data)
     jabber_hfu_disco_items_server(js);
 }
 
+static void jabber_hfu_send_act(PurpleBlistNode *node, gpointer ignored)
+{
+    PurpleBuddy *buddy;
+    PurpleConnection *gc;
+
+    buddy = (PurpleBuddy *)node;
+    gc = purple_account_get_connection(purple_buddy_get_account(buddy));
+
+    jabber_hfu_xfer_send(gc, buddy->name, NULL);
+}
+
+static GList *jabber_hfu_blist_node_menu(PurpleBlistNode *node)
+{
+    PurpleMenuAction *act;
+
+    GList *menu = old_blist_node_menu(node);
+
+    act = purple_menu_action_new(_("HTTP File Upload"),
+                PURPLE_CALLBACK(jabber_hfu_send_act),
+                NULL, NULL);
+
+    menu = g_list_append(menu, act);
+
+    return menu;
+}
+
+gboolean plugin_unload(PurplePlugin *plugin)
+{
+    return TRUE;
+}
+
 gboolean plugin_load(PurplePlugin *plugin)
 {
     PurplePlugin *jabber_plugin = purple_plugins_find_with_id(JABBER_PLUGIN_ID);
 
     PurplePluginProtocolInfo *jabber_protocol_info = PURPLE_PLUGIN_PROTOCOL_INFO(jabber_plugin);
 
-    jabber_protocol_info->send_file = jabber_hfu_xfer_send;
-    jabber_protocol_info->new_xfer = jabber_hfu_new_xfer;
+    gboolean force = purple_prefs_get_bool(PREF_PREFIX "/force");
+
+    if (force)
+    {
+        jabber_protocol_info->send_file = jabber_hfu_xfer_send;
+        jabber_protocol_info->new_xfer = jabber_hfu_new_xfer;
+    }
+
+    old_blist_node_menu = jabber_protocol_info->blist_node_menu;
+    jabber_protocol_info->blist_node_menu = jabber_hfu_blist_node_menu;
 
     purple_signal_connect(purple_connections_get_handle(), "signed-on", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
 
@@ -373,6 +415,31 @@ gboolean plugin_load(PurplePlugin *plugin)
 
     return TRUE;
 }
+
+static PurplePluginPrefFrame *get_plugin_pref_frame(PurplePlugin *plugin) 
+{
+    PurplePluginPrefFrame *frame;
+    PurplePluginPref *pref;
+
+    frame = purple_plugin_pref_frame_new();
+
+    pref = purple_plugin_pref_new_with_name_and_label(PREF_PREFIX "/force", _("Force HTTP File Upload"));
+    purple_plugin_pref_frame_add(frame, pref);
+
+    return frame;
+}
+
+
+static PurplePluginUiInfo prefs_info = {
+    get_plugin_pref_frame,
+    0,   /* page_num (Reserved) */
+    NULL, /* frame (Reserved) */
+    /* Padding */
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
 
 
 static PurplePluginInfo info = {
@@ -395,12 +462,12 @@ static PurplePluginInfo info = {
     "https://github.com/Junker/purple-xmpp-http-upload",
 
     plugin_load,
-    NULL,
+    plugin_unload,
     NULL,
 
     NULL,
     NULL,
-    NULL,
+    &prefs_info,
     NULL,
     NULL,
     NULL,
@@ -413,6 +480,10 @@ static void plugin_init(PurplePlugin * plugin)
     PurplePluginInfo * info = plugin->info;
 
     info->dependencies = g_list_prepend(info->dependencies, "prpl-jabber");
+
+    purple_prefs_add_none(PREF_PREFIX);
+    purple_prefs_add_bool(PREF_PREFIX "/force", FALSE);
+
 }
 
 PURPLE_INIT_PLUGIN(jabber_http_file_upload, plugin_init, info)
