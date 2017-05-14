@@ -16,6 +16,7 @@
 #include "prpl.h"
 
 #include "jutil.h"
+#include "chat.h"
 #include "ft.h"
 #include "iq.h"
 #include "disco.h"
@@ -244,15 +245,34 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
 static void jabber_hfu_send_url_to_conv(PurpleXfer *xfer)
 {
     PurpleConversation *conv;
-    PurpleConvIm *im;
+
 
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
     PurpleAccount *account = purple_xfer_get_account(xfer);
+    PurpleConversationType conv_type;
 
     conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_IM, xfer->who, account);
-    im = purple_conversation_get_im_data(conv);
+    
+    if (!conv)
+    {
+        conv = purple_find_conversation_with_account(PURPLE_CONV_TYPE_CHAT, xfer->who, account);
+    }
 
-    purple_conv_im_send(im, hfux->get_url);
+    if (conv)
+    {
+        conv_type = purple_conversation_get_type(conv);
+
+        if (conv_type == PURPLE_CONV_TYPE_CHAT)
+        {
+            PurpleConvChat *conv_chat = purple_conversation_get_chat_data(conv);
+            purple_conv_chat_send(conv_chat, hfux->get_url);
+        }
+        else if (conv_type == PURPLE_CONV_TYPE_IM)
+        {
+            PurpleConvIm *conv_im = purple_conversation_get_im_data(conv);
+            purple_conv_im_send(conv_im, hfux->get_url);
+        }
+    }
 }
 
 static void jabber_hfu_xfer_end(PurpleXfer *xfer)
@@ -364,13 +384,28 @@ static void jabber_hfu_signed_on_cb(PurpleConnection *conn, void *data)
 
 static void jabber_hfu_send_act(PurpleBlistNode *node, gpointer ignored)
 {
-    PurpleBuddy *buddy;
-    PurpleConnection *gc;
+    PurpleConnection *gc = NULL;
+    const gchar *bname; 
 
-    buddy = (PurpleBuddy *)node;
-    gc = purple_account_get_connection(purple_buddy_get_account(buddy));
+    if(PURPLE_BLIST_NODE_IS_BUDDY(node))
+    {
+        PurpleBuddy *buddy = (PurpleBuddy *)node;
+        gc = purple_account_get_connection(purple_buddy_get_account(buddy));
 
-    jabber_hfu_xfer_send(gc, buddy->name, NULL);
+        bname = buddy->name;
+    }
+    else if (PURPLE_BLIST_NODE_IS_CHAT(node)) 
+    {
+
+        PurpleChat *chat = PURPLE_CHAT(node);
+        gc = purple_account_get_connection(purple_chat_get_account(chat));
+
+        bname = jabber_get_chat_name(purple_chat_get_components(chat));
+    }
+
+    if (gc)
+        jabber_hfu_xfer_send(gc, bname, NULL);
+
 }
 
 static GList *jabber_hfu_blist_node_menu(PurpleBlistNode *node)
