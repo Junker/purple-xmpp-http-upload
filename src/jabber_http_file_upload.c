@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <glib/gi18n.h>
+#include <errno.h>
 
 #include "cmds.h"
 #include "debug.h"
@@ -292,27 +293,27 @@ static void jabber_hfu_xfer_cancel_send(PurpleXfer *xfer)
 
 static gssize jabber_hfu_xfer_write(const guchar *buffer, size_t len, PurpleXfer *xfer)
 {
-    gssize len;
+    gssize tlen;
 
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
 
-    len = purple_ssl_write(hfux->ssl_conn, buffer, len);
+    tlen = purple_ssl_write(hfux->ssl_conn, buffer, len);
 
-    if (len == -1) 
+    if (tlen == -1) 
     {
         if (purple_xfer_get_bytes_sent(xfer) >= purple_xfer_get_size(xfer))
             purple_xfer_set_completed(xfer, TRUE);
 
         if ((errno != EAGAIN) && (errno != EINTR))
             return -1;
-        
+
         return 0;
     }
 
-    if ((purple_xfer_get_bytes_sent(xfer) + len) >= purple_xfer_get_size(xfer))
+    if ((purple_xfer_get_bytes_sent(xfer) + tlen) >= purple_xfer_get_size(xfer))
             purple_xfer_set_completed(xfer, TRUE);
 
-    return len;
+    return tlen;
 }
 
 static void jabber_hfu_xfer_init(PurpleXfer *xfer)
