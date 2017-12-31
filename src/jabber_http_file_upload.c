@@ -82,7 +82,7 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
     headers = g_strdup_printf("PUT /%s HTTP/1.0\r\n"
             "Connection: close\r\n"
             "Host: %s\r\n"
-            "Content-Length: %lu\r\n"
+            "Content-Length: %zu\r\n"
             "Content-Type: application/octet-stream\r\n"
             "User-Agent: libpurple\r\n"
             "\r\n",
@@ -207,7 +207,7 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
 
     filename = purple_xfer_get_filename(xfer);
     filepath = purple_xfer_get_local_filename(xfer);
-    filesize = g_strdup_printf("%lu", purple_xfer_get_size(xfer));
+    filesize = g_strdup_printf("%zu", purple_xfer_get_size(xfer));
     filemime = file_get_mime(filepath);
 
     if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
@@ -336,7 +336,7 @@ static void jabber_hfu_xfer_init(PurpleXfer *xfer)
 
     if (js_data->max_file_size && purple_xfer_get_size(xfer) > js_data->max_file_size)
     {
-        gchar *msg = g_strdup_printf(_("HTTP File Upload maximum file size is %lu bytes"), js_data->max_file_size);
+        gchar *msg = g_strdup_printf(_("HTTP File Upload maximum file size is %" G_GSIZE_FORMAT " bytes"), js_data->max_file_size);
         purple_notify_error(hfux->js->gc, _("File Send Failed"), _("File Send Failed"), msg);
         g_free(msg);
 
