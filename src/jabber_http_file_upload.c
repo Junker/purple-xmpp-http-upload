@@ -82,13 +82,13 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
     headers = g_strdup_printf("PUT /%s HTTP/1.0\r\n"
             "Connection: close\r\n"
             "Host: %s\r\n"
-            "Content-Length: %zu\r\n"
+            "Content-Length: %" G_GSIZE_FORMAT "\r\n"
             "Content-Type: application/octet-stream\r\n"
             "User-Agent: libpurple\r\n"
             "\r\n",
             path,
             host,
-            purple_xfer_get_size(xfer));
+            (gsize) purple_xfer_get_size(xfer));
 
     //add headers!!!
 
@@ -207,7 +207,7 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
 
     filename = purple_xfer_get_filename(xfer);
     filepath = purple_xfer_get_local_filename(xfer);
-    filesize = g_strdup_printf("%zu", purple_xfer_get_size(xfer));
+    filesize = g_strdup_printf("%" G_GSIZE_FORMAT, (gsize) purple_xfer_get_size(xfer));
     filemime = file_get_mime(filepath);
 
     if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
