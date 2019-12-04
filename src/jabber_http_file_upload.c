@@ -64,7 +64,7 @@ static void jabber_hfu_http_read(gpointer user_data, PurpleSslConnection *ssl_co
 static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
 {
     PurpleHttpURL *httpurl;
-    gchar *headers, *host, *path;
+    gchar *headers, *host, *path, *auth = NULL, *expire = NULL, *cookie = NULL;
 
     PurpleXfer *xfer = data;
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
@@ -73,10 +73,18 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
     httpurl = purple_http_url_parse(hfux->put_url);
     path = purple_http_url_get_path(httpurl);
 
-    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
-        host = g_hash_table_lookup(hfux->put_headers, "Host") ?: purple_http_url_get_host(httpurl);
-    else
-        host = purple_http_url_get_host(httpurl);
+    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0)) {
+        char *a = g_hash_table_lookup(hfux->put_headers, "Authorisation");
+	char *c = g_hash_table_lookup(hfux->put_headers, "Cookie");
+        char *e = g_hash_table_lookup(hfux->put_headers, "Expires");
+	if(a)
+	    auth = g_strdup_printf("Authorisation: %s\r\n", a);
+	if(c)
+	    cookie = g_strdup_printf("Cookie: %s\r\n", c);
+	if(e)
+	    expire = g_strdup_printf("Expires: %s\r\n", e);
+    }
+    host = purple_http_url_get_host(httpurl);
     
  
     headers = g_strdup_printf("PUT /%s HTTP/1.0\r\n"
@@ -85,12 +93,13 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
             "Content-Length: %" G_GSIZE_FORMAT "\r\n"
             "Content-Type: application/octet-stream\r\n"
             "User-Agent: libpurple\r\n"
-            "\r\n",
-            path,
-            host,
-            (gsize) purple_xfer_get_size(xfer));
+            "%s%s%s\r\n",
+            path, host, (gsize) purple_xfer_get_size(xfer),
+	    (auth?:""), (expire?:""), (cookie?:""));
 
-    //add headers!!!
+    g_free(auth);
+    g_free(expire);
+    g_free(cookie);
 
     purple_ssl_write(ssl_connection, headers, strlen(headers));
 
@@ -401,6 +410,24 @@ static void jabber_hfu_signed_on_cb(PurpleConnection *conn, void *data)
     jabber_hfu_disco_items_server(js);
 }
 
+static void jabber_hfu_signed_off_cb(PurpleConnection *conn, void *data)
+{
+    PurpleAccount *account = purple_connection_get_account(conn);
+
+    if (strcmp(JABBER_PLUGIN_ID, purple_account_get_protocol_id(account)))
+        return;
+
+    JabberStream *js = purple_connection_get_protocol_data(conn);
+
+    HFUJabberStreamData *js_data = g_hash_table_lookup(HFUJabberStreamDataTable, js);
+
+    if(js_data) {
+	g_hash_table_remove(HFUJabberStreamDataTable, js);
+	g_free(js_data->host);
+	g_free(js_data);
+    }
+}
+
 static void jabber_hfu_send_act(PurpleBlistNode *node, gpointer ignored)
 {
     PurpleConnection *gc = NULL;
@@ -465,6 +492,7 @@ gboolean plugin_load(PurplePlugin *plugin)
     jabber_protocol_info->blist_node_menu = jabber_hfu_blist_node_menu;
 
     purple_signal_connect(purple_connections_get_handle(), "signed-on", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
+    purple_signal_connect(purple_connections_get_handle(), "signed-off", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_off_cb), NULL);
 
     HFUJabberStreamDataTable = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, NULL);
 
