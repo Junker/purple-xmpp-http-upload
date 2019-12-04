@@ -26,46 +26,42 @@ static void jabber_hfu_disco_info_cb(JabberStream *js, const char *from,
 
 	query = xmlnode_get_child_with_namespace(packet, "query", NS_DISCO_INFO);
 
-	if (type == JABBER_IQ_RESULT && query) 
-	{
-		js_data = g_hash_table_lookup(HFUJabberStreamDataTable, js);
-		if (!js_data) return;
+	if (type != JABBER_IQ_RESULT || query == NULL) 
+		return;
+
+	js_data = g_hash_table_lookup(HFUJabberStreamDataTable, js);
+	// Always prefer latest standard, skip if already found
+	if (!js_data || str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
+		return;
 
         for (feature = xmlnode_get_child(query, "feature") ; feature; feature = xmlnode_get_next_twin(feature)) 
         {
-			const char *var = xmlnode_get_attrib(feature, "var");
-			if(!var)
-				continue;
+		const char *var = xmlnode_get_attrib(feature, "var");
+		if(!var)
+			continue;
 
-			if(str_equal(var, NS_HTTP_FILE_UPLOAD))
-				js_data->ns = NS_HTTP_FILE_UPLOAD;
-			else if(str_equal(var, NS_HTTP_FILE_UPLOAD_V0))
-				js_data->ns = NS_HTTP_FILE_UPLOAD_V0;
+		if(str_equal(var, NS_HTTP_FILE_UPLOAD) && js_data->ns == NULL)
+			js_data->ns = NS_HTTP_FILE_UPLOAD;
+		else if(str_equal(var, NS_HTTP_FILE_UPLOAD_V0))
+			js_data->ns = NS_HTTP_FILE_UPLOAD_V0;
+		else
+			continue;
 
-			if (str_equal(var, NS_HTTP_FILE_UPLOAD) || str_equal(var, NS_HTTP_FILE_UPLOAD_V0))
+		g_free(js_data->host);
+		js_data->host = g_strdup(from);
+
+		x = xmlnode_get_child_with_namespace(query, "x", "jabber:x:data");
+		if (x)
+		{
+			for(field = xmlnode_get_child(x, "field"); field; field = xmlnode_get_next_twin(field)) 
 			{
-				js_data->host = g_strdup(from);
+				const char *var = xmlnode_get_attrib(field, "var");
 
-				x = xmlnode_get_child_with_namespace(query, "x", "jabber:x:data");
-				if (x)
-				{
-					for(field = xmlnode_get_child(x, "field"); field; field = xmlnode_get_next_twin(field)) 
-					{
-						const char *var = xmlnode_get_attrib(field, "var");
-
-						if(var && str_equal(var, "max-file-size")) 
-						{
-							if((value = xmlnode_get_child(field, "value"))) 
-							{
-								js_data->max_file_size = (gsize) atol(xmlnode_get_data(value));
-							}
-						}
-					}
-				}
+				if(var && str_equal(var, "max-file-size")) 
+					if((value = xmlnode_get_child(field, "value"))) 
+						js_data->max_file_size = (gsize) atol(xmlnode_get_data(value));
 			}
 		}
-
-
 	}
 }
 
