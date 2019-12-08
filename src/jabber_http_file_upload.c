@@ -43,6 +43,8 @@ static inline PurpleHttpURL *purple_http_url_parse(const gchar *url) {
     return ret;
 }
 
+GHashTable *ht_hfu_sending;
+
 #define purple_http_url_get_host(httpurl) (httpurl->host)
 #define purple_http_url_get_port(httpurl) (httpurl->port)
 #define purple_http_url_get_path(httpurl) (httpurl->path)
@@ -251,6 +253,27 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
         g_free(filemime);
 }
 
+static void
+jabber_hfu_xmlnode_send_cb(PurpleConnection *gc, xmlnode **packet, gpointer null)
+{
+
+  if (*packet != NULL && (*packet)->name) {
+    if (g_strcmp0 ((*packet)->name, "message") == 0) {
+      xmlnode *node_body = xmlnode_get_child (*packet, "body");
+      if (node_body) {
+        HFUXfer *hfux = g_hash_table_lookup(ht_hfu_sending, xmlnode_get_data(node_body));
+        if(hfux) {
+           xmlnode *x, *url;
+           x = xmlnode_new_child (*packet, "x");
+           xmlnode_set_namespace (x, NS_OOB_X_DATA);
+           g_debug ("Adding OOB Data to URL: %s", hfux->get_url);
+           url = xmlnode_new_child(x, "url");
+	   xmlnode_insert_data(url, hfux->get_url, -1);
+        }
+      }
+    }
+  }
+}
 
 static void jabber_hfu_send_url_to_conv(PurpleXfer *xfer)
 {
@@ -280,7 +303,10 @@ static void jabber_hfu_send_url_to_conv(PurpleXfer *xfer)
         else if (conv_type == PURPLE_CONV_TYPE_IM)
         {
             PurpleConvIm *conv_im = purple_conversation_get_im_data(conv);
-            purple_conv_im_send(conv_im, hfux->get_url);
+           // Send raw URL to handle it later
+           g_hash_table_insert(ht_hfu_sending, hfux->get_url, hfux);
+           purple_conv_im_send_with_flags(conv_im, hfux->get_url, PURPLE_MESSAGE_RAW);
+	   g_hash_table_remove(ht_hfu_sending, hfux->get_url);
         }
     }
 }
@@ -333,6 +359,7 @@ static void jabber_hfu_xfer_init(PurpleXfer *xfer)
 
     hfux->js_data = js_data;
 
+    purple_debug_info("jabber_http_upload", "in jabber_hfu_xfer_init\n");
     if (!js_data->ns)
     {
         purple_notify_error(hfux->js->gc, _("File Send Failed"), _("File Send Failed"), _("HTTP File Upload is not supported by server"));
@@ -471,6 +498,9 @@ static GList *jabber_hfu_blist_node_menu(PurpleBlistNode *node)
 
 gboolean plugin_unload(PurplePlugin *plugin)
 {
+    purple_signals_disconnect_by_handle(plugin);
+    g_hash_table_destroy(ht_hfu_sending);
+    g_hash_table_destroy(HFUJabberStreamDataTable);
     return TRUE;
 }
 
@@ -491,10 +521,12 @@ gboolean plugin_load(PurplePlugin *plugin)
     old_blist_node_menu = jabber_protocol_info->blist_node_menu;
     jabber_protocol_info->blist_node_menu = jabber_hfu_blist_node_menu;
 
-    purple_signal_connect(purple_connections_get_handle(), "signed-on", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
-    purple_signal_connect(purple_connections_get_handle(), "signed-off", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_off_cb), NULL);
+    purple_signal_connect(purple_connections_get_handle(), "signed-on", plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
+    purple_signal_connect(purple_connections_get_handle(), "signed-off", plugin, PURPLE_CALLBACK(jabber_hfu_signed_off_cb), NULL);
 
     HFUJabberStreamDataTable = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, NULL);
+    ht_hfu_sending = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
+    purple_signal_connect(jabber_plugin, "jabber-sending-xmlnode", plugin, PURPLE_CALLBACK(jabber_hfu_xmlnode_send_cb), NULL);
 
     return TRUE;
 }
