@@ -1,6 +1,5 @@
 CC	?= gcc
-CFLAGS	?= -g -pipe -fPIC
-LDFLAGS ?= -ldl -lm -ljabber
+CFLAGS	?= -g -pipe
 PKG_CONFIG  ?= pkg-config
 
 DIR_PERM	= 0755
@@ -8,8 +7,8 @@ FILE_PERM	= 0644
 
 HEADERS=-I./headers/jabber
 
-CFLAGS	+= $(shell $(PKG_CONFIG) --cflags glib-2.0 gio-2.0 purple) $(shell xml2-config --cflags) $(HEADERS)
-LIBS	+= $(shell $(PKG_CONFIG) --libs glib-2.0 gio-2.0 purple)  $(shell xml2-config --libs) -L$(shell $(PKG_CONFIG) --variable=plugindir purple)
+CFLAGS	+= -fPIC $(shell $(PKG_CONFIG) --cflags glib-2.0 gio-2.0 purple) $(shell xml2-config --cflags) $(HEADERS)
+LIBS	+= $(shell $(PKG_CONFIG) --libs glib-2.0 gio-2.0 purple)  $(shell xml2-config --libs) -L$(shell $(PKG_CONFIG) --variable=plugindir purple) -ldl -lm -ljabber
 PLUGIN_DIR_PURPLE	=  $(shell $(PKG_CONFIG) --variable=plugindir purple)
 DATA_ROOT_DIR_PURPLE	=  $(shell $(PKG_CONFIG) --variable=datarootdir purple)
 
