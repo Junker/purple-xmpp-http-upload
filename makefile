@@ -9,7 +9,7 @@ FILE_PERM	= 0644
 HEADERS=-I./headers/jabber
 
 CFLAGS	+= $(shell $(PKG_CONFIG) --cflags glib-2.0 gio-2.0 purple) $(shell xml2-config --cflags) $(HEADERS)
-LIBS	+= $(shell $(PKG_CONFIG) --libs glib-2.0 gio-2.0 purple)  $(shell xml2-config --libs) -L$(shell pkg-config --variable=plugindir purple)
+LIBS	+= $(shell $(PKG_CONFIG) --libs glib-2.0 gio-2.0 purple)  $(shell xml2-config --libs) -L$(shell $(PKG_CONFIG) --variable=plugindir purple)
 PLUGIN_DIR_PURPLE	=  $(shell $(PKG_CONFIG) --variable=plugindir purple)
 DATA_ROOT_DIR_PURPLE	=  $(shell $(PKG_CONFIG) --variable=datarootdir purple)
 
