@@ -36,12 +36,13 @@ typedef struct {
     gchar *passwd;
 } PurpleHttpURL;
 
-
 static inline PurpleHttpURL *purple_http_url_parse(const gchar *url) {
     PurpleHttpURL *ret = g_new0(PurpleHttpURL, 1);
     purple_url_parse(url, &(ret->host), &(ret->port), &(ret->path), &(ret->user), &(ret->passwd));
     return ret;
 }
+
+GHashTable *ht_hfu_sending;
 
 #define purple_http_url_get_host(httpurl) (httpurl->host)
 #define purple_http_url_get_port(httpurl) (httpurl->port)
@@ -54,56 +55,77 @@ static inline void purple_http_url_free(PurpleHttpURL *phl) { g_free(phl->host);
 
 static void jabber_hfu_http_read(gpointer user_data, PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
 {
-    gchar buf[1024];
+    PurpleXfer *xfer = user_data;
+    gchar buf[1024] = {0};
 
-    //Flush the server buffer
-    purple_ssl_read(ssl_connection, buf, 1024);
-    purple_debug_info("jabber_http_upload", "Server file send response was %s\n", buf);
+    //Read the server buffer
+    size_t rl = purple_ssl_read(ssl_connection, buf, 1024);
+    purple_debug_info("jabber_http_upload", "Server file send response was %ld bytes: %s\n", rl, buf);
+
+    if(rl == (size_t)-1)
+	return;
+
+    if ((purple_xfer_get_bytes_sent(xfer)) >= purple_xfer_get_size(xfer)) {
+	// Looking for HTTP/1.1 201
+	if(rl > 12 && g_str_has_prefix(buf, "HTTP/1.") && g_str_has_prefix(buf+8, " 20")) {
+	    // 20x statuses are good, should be 201 but who knows those servers
+            purple_xfer_set_completed(xfer, TRUE);
+	    purple_xfer_end(xfer);
+	    return;
+	}
+    }
+    // We've read everything it seems but didn't understand a word
+    purple_xfer_cancel_remote(xfer);
+    g_return_if_reached();
 }
 
 static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
 {
     PurpleHttpURL *httpurl;
-    gchar *headers, *host, *path;
+    g_autofree gchar *headers, *auth = NULL, *expire = NULL, *cookie = NULL;
 
     PurpleXfer *xfer = data;
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
     HFUJabberStreamData *js_data = hfux->js_data;
+    g_autofree char *filemime = file_get_mime(purple_xfer_get_local_filename(xfer));
 
     httpurl = purple_http_url_parse(hfux->put_url);
-    path = purple_http_url_get_path(httpurl);
 
-    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0))
-        host = g_hash_table_lookup(hfux->put_headers, "Host") ?: purple_http_url_get_host(httpurl);
-    else
-        host = purple_http_url_get_host(httpurl);
-    
+    if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0)) {
+        char *a = g_hash_table_lookup(hfux->put_headers, "Authorisation");
+	char *c = g_hash_table_lookup(hfux->put_headers, "Cookie");
+        char *e = g_hash_table_lookup(hfux->put_headers, "Expires");
+	if(a)
+	    auth = g_strdup_printf("Authorisation: %s\r\n", a);
+	if(c)
+	    cookie = g_strdup_printf("Cookie: %s\r\n", c);
+	if(e)
+	    expire = g_strdup_printf("Expires: %s\r\n", e);
+    }
  
     headers = g_strdup_printf("PUT /%s HTTP/1.0\r\n"
             "Connection: close\r\n"
             "Host: %s\r\n"
             "Content-Length: %" G_GSIZE_FORMAT "\r\n"
-            "Content-Type: application/octet-stream\r\n"
+            "Content-Type: %s\r\n"
             "User-Agent: libpurple\r\n"
-            "\r\n",
-            path,
-            host,
-            (gsize) purple_xfer_get_size(xfer));
-
-    //add headers!!!
-
-    purple_ssl_write(ssl_connection, headers, strlen(headers));
+            "%s%s%s\r\n",
+	    purple_http_url_get_path(httpurl),
+	    purple_http_url_get_host(httpurl),
+	    (gsize) purple_xfer_get_size(xfer),
+	    (filemime?:"application/octet-stream"),
+	    (auth?:""), (expire?:""), (cookie?:""));
 
     hfux->ssl_conn = ssl_connection;
     purple_ssl_input_add(ssl_connection, jabber_hfu_http_read, xfer);
+
+    purple_ssl_write(ssl_connection, headers, strlen(headers));
 
     purple_xfer_ref(xfer);
     purple_xfer_start(xfer, ssl_connection->fd, NULL, 0);
 
     purple_xfer_prpl_ready(xfer);
-
-    g_free(headers);
-
+    purple_http_url_free(httpurl);
 }
 
 static void jabber_hfu_http_error_connect_cb(PurpleSslConnection *ssl_connection, PurpleSslErrorType *error_type, gpointer data)
@@ -118,12 +140,12 @@ static void jabber_hfu_request_cb(JabberStream *js, const char *from,
     PurpleAccount *account;
     xmlnode *slot, *put, *get, *header = NULL;
     PurpleHttpURL *put_httpurl;
-    gchar *put_host;
 
     PurpleXfer *xfer = data;
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
     HFUJabberStreamData *js_data = hfux->js_data;
     account = purple_connection_get_account(js->gc);
+
 
     if(!(slot = xmlnode_get_child_with_namespace(packet, "slot", js_data->ns)))
     {
@@ -140,7 +162,7 @@ static void jabber_hfu_request_cb(JabberStream *js, const char *from,
         for (header = xmlnode_get_child(put, "header") ; header;
                  header = xmlnode_get_next_twin(header))
         {
-            g_hash_table_insert(hfux->put_headers, g_strdup(xmlnode_get_attrib(header, "name")), g_strdup(xmlnode_get_data(header)));
+            g_hash_table_insert(hfux->put_headers, g_strdup(xmlnode_get_attrib(header, "name")), xmlnode_get_data(header));
         }
 
         hfux->put_url = g_strdup(xmlnode_get_attrib(put, "url"));
@@ -153,9 +175,10 @@ static void jabber_hfu_request_cb(JabberStream *js, const char *from,
     }
 
     put_httpurl = purple_http_url_parse(hfux->put_url);
-    put_host = purple_http_url_get_host(put_httpurl);
 
-    purple_ssl_connect(account, put_host, purple_http_url_get_port(put_httpurl), jabber_hfu_http_send_connect_cb, (PurpleSslErrorFunction)jabber_hfu_http_error_connect_cb, xfer);
+    g_debug("Connecting to %s:%d for %s", purple_http_url_get_host(put_httpurl), purple_http_url_get_port(put_httpurl), hfux->put_url);
+    purple_ssl_connect(account, purple_http_url_get_host(put_httpurl), purple_http_url_get_port(put_httpurl),
+			jabber_hfu_http_send_connect_cb, (PurpleSslErrorFunction)jabber_hfu_http_error_connect_cb, xfer);
 
     purple_http_url_free(put_httpurl);
 }
@@ -166,15 +189,11 @@ static void jabber_hfu_xfer_free(PurpleXfer *xfer)
 
     g_return_if_fail(hfux != NULL);
 
-    if (hfux->put_url)
-    {
-        g_free(hfux->put_url);
-    }
+    g_free(hfux->put_url);
+    g_free(hfux->get_url);
 
-    if (hfux->get_url)
-    {
-        g_free(hfux->get_url);
-    }
+    if(hfux->put_headers)
+        g_hash_table_destroy(hfux->put_headers);
 
     if (hfux->ssl_conn)
     {
@@ -242,6 +261,28 @@ static void jabber_hfu_send_request(PurpleXfer *xfer)
         g_free(filemime);
 }
 
+static void
+jabber_hfu_xmlnode_send_cb(PurpleConnection *gc, xmlnode **packet, gpointer null)
+{
+
+  if (*packet != NULL && (*packet)->name) {
+    if (g_strcmp0 ((*packet)->name, "message") == 0) {
+      xmlnode *node_body = xmlnode_get_child (*packet, "body");
+      if (node_body) {
+	g_autofree char *url = xmlnode_get_data(node_body);
+        HFUXfer *hfux = g_hash_table_lookup(ht_hfu_sending, url);
+        if(hfux) {
+           xmlnode *x, *url;
+           x = xmlnode_new_child (*packet, "x");
+           xmlnode_set_namespace (x, NS_OOB_X_DATA);
+           g_debug ("Adding OOB Data to URL: %s", hfux->get_url);
+           url = xmlnode_new_child(x, "url");
+	   xmlnode_insert_data(url, hfux->get_url, -1);
+        }
+      }
+    }
+  }
+}
 
 static void jabber_hfu_send_url_to_conv(PurpleXfer *xfer)
 {
@@ -271,13 +312,17 @@ static void jabber_hfu_send_url_to_conv(PurpleXfer *xfer)
         else if (conv_type == PURPLE_CONV_TYPE_IM)
         {
             PurpleConvIm *conv_im = purple_conversation_get_im_data(conv);
-            purple_conv_im_send(conv_im, hfux->get_url);
+           // Send raw URL to handle it later
+           g_hash_table_insert(ht_hfu_sending, hfux->get_url, hfux);
+           purple_conv_im_send_with_flags(conv_im, hfux->get_url, PURPLE_MESSAGE_RAW);
+	   g_hash_table_remove(ht_hfu_sending, hfux->get_url);
         }
     }
 }
 
 static void jabber_hfu_xfer_end(PurpleXfer *xfer)
 {
+    g_debug("This is the end.");
     jabber_hfu_send_url_to_conv(xfer);
 
     jabber_hfu_xfer_free(xfer);
@@ -301,19 +346,20 @@ static gssize jabber_hfu_xfer_write(const guchar *buffer, size_t len, PurpleXfer
 
     if (tlen == -1) 
     {
-        if (purple_xfer_get_bytes_sent(xfer) >= purple_xfer_get_size(xfer))
-            purple_xfer_set_completed(xfer, TRUE);
-
         if ((errno != EAGAIN) && (errno != EINTR))
             return -1;
 
         return 0;
-    }
-
-    if ((purple_xfer_get_bytes_sent(xfer) + tlen) >= purple_xfer_get_size(xfer))
-            purple_xfer_set_completed(xfer, TRUE);
+    } else if ((purple_xfer_get_bytes_sent(xfer)+tlen) >= purple_xfer_get_size(xfer))
+		xfer->status = PURPLE_XFER_STATUS_DONE; // sneaky cheat
 
     return tlen;
+}
+
+static void jabber_hfu_xfer_ack(PurpleXfer *xfer, const guchar *buffer, size_t len)
+{
+    if (purple_xfer_is_completed(xfer))
+	xfer->status = PURPLE_XFER_STATUS_STARTED; // hideous uncheat
 }
 
 static void jabber_hfu_xfer_init(PurpleXfer *xfer)
@@ -324,6 +370,7 @@ static void jabber_hfu_xfer_init(PurpleXfer *xfer)
 
     hfux->js_data = js_data;
 
+    purple_debug_info("jabber_http_upload", "in jabber_hfu_xfer_init\n");
     if (!js_data->ns)
     {
         purple_notify_error(hfux->js->gc, _("File Send Failed"), _("File Send Failed"), _("HTTP File Upload is not supported by server"));
@@ -350,7 +397,6 @@ static void jabber_hfu_xfer_init(PurpleXfer *xfer)
 }
 
 
-
 PurpleXfer *jabber_hfu_new_xfer(PurpleConnection *gc, const char *who)
 {
     JabberStream *js;
@@ -367,8 +413,9 @@ PurpleXfer *jabber_hfu_new_xfer(PurpleConnection *gc, const char *who)
 
     purple_xfer_set_init_fnc(xfer, jabber_hfu_xfer_init);
     purple_xfer_set_cancel_send_fnc(xfer, jabber_hfu_xfer_cancel_send);
-    purple_xfer_set_end_fnc(xfer, jabber_hfu_xfer_end);
     purple_xfer_set_write_fnc(xfer, jabber_hfu_xfer_write);
+    purple_xfer_set_ack_fnc(xfer, jabber_hfu_xfer_ack);
+    purple_xfer_set_end_fnc(xfer, jabber_hfu_xfer_end);
 
     return xfer;
 }
@@ -399,6 +446,24 @@ static void jabber_hfu_signed_on_cb(PurpleConnection *conn, void *data)
     g_hash_table_insert(HFUJabberStreamDataTable, js, js_data);
 
     jabber_hfu_disco_items_server(js);
+}
+
+static void jabber_hfu_signed_off_cb(PurpleConnection *conn, void *data)
+{
+    PurpleAccount *account = purple_connection_get_account(conn);
+
+    if (strcmp(JABBER_PLUGIN_ID, purple_account_get_protocol_id(account)))
+        return;
+
+    JabberStream *js = purple_connection_get_protocol_data(conn);
+
+    HFUJabberStreamData *js_data = g_hash_table_lookup(HFUJabberStreamDataTable, js);
+
+    if(js_data) {
+	g_hash_table_remove(HFUJabberStreamDataTable, js);
+	g_free(js_data->host);
+	g_free(js_data);
+    }
 }
 
 static void jabber_hfu_send_act(PurpleBlistNode *node, gpointer ignored)
@@ -444,6 +509,14 @@ static GList *jabber_hfu_blist_node_menu(PurpleBlistNode *node)
 
 gboolean plugin_unload(PurplePlugin *plugin)
 {
+    PurplePlugin *jabber_plugin = purple_plugins_find_with_id(JABBER_PLUGIN_ID);
+
+    PurplePluginProtocolInfo *jabber_protocol_info = PURPLE_PLUGIN_PROTOCOL_INFO(jabber_plugin);
+    jabber_protocol_info->blist_node_menu = old_blist_node_menu;
+
+    purple_signals_disconnect_by_handle(plugin);
+    g_hash_table_destroy(ht_hfu_sending);
+    g_hash_table_destroy(HFUJabberStreamDataTable);
     return TRUE;
 }
 
@@ -464,9 +537,12 @@ gboolean plugin_load(PurplePlugin *plugin)
     old_blist_node_menu = jabber_protocol_info->blist_node_menu;
     jabber_protocol_info->blist_node_menu = jabber_hfu_blist_node_menu;
 
-    purple_signal_connect(purple_connections_get_handle(), "signed-on", jabber_plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
+    purple_signal_connect(purple_connections_get_handle(), "signed-on", plugin, PURPLE_CALLBACK(jabber_hfu_signed_on_cb), NULL);
+    purple_signal_connect(purple_connections_get_handle(), "signed-off", plugin, PURPLE_CALLBACK(jabber_hfu_signed_off_cb), NULL);
 
     HFUJabberStreamDataTable = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, NULL);
+    ht_hfu_sending = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
+    purple_signal_connect(jabber_plugin, "jabber-sending-xmlnode", plugin, PURPLE_CALLBACK(jabber_hfu_xmlnode_send_cb), NULL);
 
     return TRUE;
 }
