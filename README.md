@@ -9,3 +9,5 @@ XEP-0363: HTTP File Upload plugin for libpurple (Pidgin, Finch, etc.)
 4. `make`
 5. A final `make install` should copy the plugin into your libpurple plugin dir.
 
+## Usage
+click the "Conversation" menu, then "More" and select "HTTP file upload"
