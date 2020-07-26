@@ -26,6 +26,8 @@
 #include "hfu_util.h"
 #include "jabber_http_file_upload.h"
 
+GHashTable *HFUJabberStreamDataTable;
+
 GList *(*old_blist_node_menu)(PurpleBlistNode *node);
 
 typedef struct {
