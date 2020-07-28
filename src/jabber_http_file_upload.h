@@ -16,7 +16,7 @@ typedef struct _HFUXfer {
     GHashTable *put_headers;
 } HFUXfer;
 
-GHashTable *HFUJabberStreamDataTable;
+extern GHashTable *HFUJabberStreamDataTable;
 
 #define NS_HTTP_FILE_UPLOAD "urn:xmpp:http:upload"
 #define NS_HTTP_FILE_UPLOAD_V0 "urn:xmpp:http:upload:0"
