@@ -44,6 +44,7 @@ static inline PurpleHttpURL *purple_http_url_parse(const gchar *url) {
     return ret;
 }
 
+GHashTable *HFUJabberStreamDataTable;
 GHashTable *ht_hfu_sending;
 
 #define purple_http_url_get_host(httpurl) (httpurl->host)
@@ -62,7 +63,7 @@ static void jabber_hfu_http_read(gpointer user_data, PurpleSslConnection *ssl_co
 
     //Read the server buffer
     size_t rl = purple_ssl_read(ssl_connection, buf, 1024);
-    purple_debug_info("jabber_http_upload", "Server file send response was %ld bytes: %s\n", rl, buf);
+    purple_debug_info("jabber_http_upload", "Server file send response was %" G_GSIZE_FORMAT " bytes: %s\n", (gsize) rl, buf);
 
     if(rl == (size_t)-1)
 	return;
@@ -84,12 +85,12 @@ static void jabber_hfu_http_read(gpointer user_data, PurpleSslConnection *ssl_co
 static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *ssl_connection, PurpleInputCondition cond)
 {
     PurpleHttpURL *httpurl;
-    g_autofree gchar *headers, *auth = NULL, *expire = NULL, *cookie = NULL;
+    gchar *headers, *auth = NULL, *expire = NULL, *cookie = NULL;
 
     PurpleXfer *xfer = data;
     HFUXfer *hfux = purple_xfer_get_protocol_data(xfer);
     HFUJabberStreamData *js_data = hfux->js_data;
-    g_autofree char *filemime = file_get_mime(purple_xfer_get_local_filename(xfer));
+    char *filemime = file_get_mime(purple_xfer_get_local_filename(xfer));
 
     httpurl = purple_http_url_parse(hfux->put_url);
 
@@ -118,10 +119,16 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
 	    (filemime?:"application/octet-stream"),
 	    (auth?:""), (expire?:""), (cookie?:""));
 
+    g_free(auth);
+    g_free(expire);
+    g_free(cookie);
+    g_free(filemime);
+
     hfux->ssl_conn = ssl_connection;
     purple_ssl_input_add(ssl_connection, jabber_hfu_http_read, xfer);
 
     purple_ssl_write(ssl_connection, headers, strlen(headers));
+    g_free(headers);
 
     purple_xfer_ref(xfer);
     purple_xfer_start(xfer, ssl_connection->fd, NULL, 0);
@@ -271,8 +278,9 @@ jabber_hfu_xmlnode_send_cb(PurpleConnection *gc, xmlnode **packet, gpointer null
     if (g_strcmp0 ((*packet)->name, "message") == 0) {
       xmlnode *node_body = xmlnode_get_child (*packet, "body");
       if (node_body) {
-	g_autofree char *url = xmlnode_get_data(node_body);
+	char *url = xmlnode_get_data(node_body);
         HFUXfer *hfux = g_hash_table_lookup(ht_hfu_sending, url);
+	g_free(url);
         if(hfux) {
            xmlnode *x, *url;
            x = xmlnode_new_child (*packet, "x");
