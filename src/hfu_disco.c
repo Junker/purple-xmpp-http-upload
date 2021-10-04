@@ -107,6 +107,12 @@ void jabber_hfu_disco_items_server(JabberStream *js)
 
 	jabber_iq_set_callback(iq, jabber_hfu_disco_server_items_result_cb, NULL);
 	jabber_iq_send(iq);
+	
+	
+	iq = jabber_iq_new_query(js, JABBER_IQ_GET, NS_DISCO_INFO);
+	xmlnode_set_attrib(iq->node, "to", js->user->domain);
+	jabber_iq_set_callback(iq, jabber_hfu_disco_info_cb, NULL);
+	jabber_iq_send(iq);
 }
 
 
