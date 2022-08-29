@@ -95,7 +95,7 @@ static void jabber_hfu_http_send_connect_cb(gpointer data, PurpleSslConnection *
     httpurl = purple_http_url_parse(hfux->put_url);
 
     if (str_equal(js_data->ns, NS_HTTP_FILE_UPLOAD_V0)) {
-        char *a = g_hash_table_lookup(hfux->put_headers, "Authorisation");
+        char *a = g_hash_table_lookup(hfux->put_headers, "Authorization");
 	char *c = g_hash_table_lookup(hfux->put_headers, "Cookie");
         char *e = g_hash_table_lookup(hfux->put_headers, "Expires");
 	if(a)
