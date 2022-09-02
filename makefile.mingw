@@ -1,5 +1,5 @@
 
-PIDGIN_TREE_TOP ?= ../pidgin-2.10.11
+PIDGIN_TREE_TOP ?= ../pidgin-2.14.10
 WIN32_DEV_TOP ?= $(PIDGIN_TREE_TOP)/../win32-dev
 
 #only defined on 64-bit windows
@@ -12,7 +12,7 @@ PLUGIN_DIR_PURPLE	=  "$(PROGFILES32)/Pidgin/plugins"
 
 CC	?= $(WIN32_DEV_TOP)/mingw-4.7.2/bin/gcc
 CFLAGS	?= -O2 -g -ggdb -pipe
-LDFLAGS ?= -ljabber
+LDFLAGS ?= -ljabber -lpurple -lintl -lglib-2.0 -lgio-2.0 -lxml2 -static-libgcc -lz 
 PKG_CONFIG  ?= pkg-config
 
 DIR_PERM	= 0755
@@ -20,8 +20,8 @@ FILE_PERM	= 0644
 
 HEADERS = -I./headers/jabber
 
-CFLAGS	+= -I$(WIN32_DEV_TOP)/glib-2.28.8/include -I$(WIN32_DEV_TOP)/glib-2.28.8/include/glib-2.0 -I$(WIN32_DEV_TOP)/glib-2.28.8/lib/glib-2.0/include -I$(WIN32_DEV_TOP)/glib-2.28.8/gio-2.0 -DENABLE_NLS -I$(PIDGIN_TREE_TOP)/libpurple -I$(PIDGIN_TREE_TOP) -I$(WIN32_DEV_TOP)/libxml2-2.9.0/include/libxml2 $(HEADERS)
-LIBS	+= -L$(PIDGIN_TREE_TOP)/libpurple -L$(PIDGIN_TREE_TOP)/libpurple/protocols/jabber/ -L$(WIN32_DEV_TOP)/glib-2.28.8/lib -L$(WIN32_DEV_TOP)/libxml2-2.9.0/lib -lpurple -lintl -lglib-2.0 -lgio-2.0 -lxml2 -static-libgcc -lz 
+CFLAGS	+= -I$(WIN32_DEV_TOP)/gtk_2_0-2.14/include -I$(WIN32_DEV_TOP)/gtk_2_0-2.14/include/glib-2.0 -I$(WIN32_DEV_TOP)/gtk_2_0-2.14/lib/glib-2.0/include -I$(WIN32_DEV_TOP)/gtk_2_0-2.14/gio-2.0 -DENABLE_NLS -I$(PIDGIN_TREE_TOP)/libpurple -I$(PIDGIN_TREE_TOP) -I$(WIN32_DEV_TOP)/libxml2-2.9.2_daa1/include/libxml2 $(HEADERS)
+LIBS	+= -L$(PIDGIN_TREE_TOP)/libpurple -L$(PIDGIN_TREE_TOP)/libpurple/protocols/jabber/ -L$(WIN32_DEV_TOP)/gtk_2_0-2.14/lib -L$(WIN32_DEV_TOP)/libxml2-2.9.2_daa1/lib 
 
 
 
