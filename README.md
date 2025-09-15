@@ -1,6 +1,9 @@
 # HTTP File Upload plugin for libpurple (XMPP Protocol)
 XEP-0363: HTTP File Upload plugin for libpurple (Pidgin, Finch, etc.)
 
+**⚠️ This plugin is no longer maintained. Feel free to fork it, add the code to your project and modify it. **
+
+
 ## Installation
 ### Linux, macOS
 1. Install the dependencies (`libxml2-dev`, `libpurple-dev`, `libglib2.0-dev`, `libgio2.0-dev`)
